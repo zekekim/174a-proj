@@ -17,12 +17,16 @@ const laneLength = 200; // Length of each segment
 const numSegments = 2; // Two segments per lane for looping
 const lanePositions = [-laneWidth, 0, laneWidth]; // left, center, right
 
-const groundLevel = 1.6;
+const eyeLevel = 1.6;
 let targetLane = 1;
 
 let isJumping = false;
 let jumpVelocity = 0;
 const gravity = 0.01;
+
+let isSliding = false;
+let slideVelocity = 0;
+const standupSpeed = 0.01;
 
 let isGameOver = false;
 
@@ -43,7 +47,7 @@ const camera = new THREE.PerspectiveCamera(
   0.1,
   1000,
 );
-camera.position.set(lanePositions[targetLane], groundLevel, 0);
+camera.position.set(lanePositions[targetLane], eyeLevel, 0);
 camera.lookAt(
   new THREE.Vector3(
     camera.position.x,
@@ -73,7 +77,7 @@ gameOverOverlay.innerHTML = "Game Over<br>Press 'R' to restart";
 document.body.appendChild(gameOverOverlay);
 
 //
-// --- Score (Distance Meter) Display ---
+// Score (Distance Meter) Display
 const scoreCounter = document.createElement("div");
 scoreCounter.style.position = "absolute";
 scoreCounter.style.top = "10px";
@@ -222,7 +226,16 @@ function createObstacle() {
   const randomLaneIndex = Math.floor(Math.random() * lanePositions.length);
   obstacle.position.x = lanePositions[randomLaneIndex];
   obstacle.position.z = -Math.random() * 200 - 100;
-  obstacle.position.y = 0.5;
+
+  // Randomly decide the type of obstacle: ground or overhead
+  const obstacleType = Math.random() < 0.5 ? "ground" : "overhead"; 
+
+  if (obstacleType === "ground") {
+    obstacle.position.y = 0.5;  // On the ground
+  } else {
+    obstacle.position.y = 2;  // Higher up for ducking under
+  }
+
   scene.add(obstacle);
   return obstacle;
 }
@@ -254,12 +267,16 @@ function updateFlashlightUniforms() {
 //
 // --- Collision Detection ---
 function checkCollisions() {
-  if (camera.position.y - groundLevel > 0.5) return;
   for (let obstacle of obstacles) {
     const dx = camera.position.x - obstacle.position.x;
+    const dy = Math.abs(camera.position.y - obstacle.position.y);
     const dz = camera.position.z - obstacle.position.z;
     const distance = Math.sqrt(dx * dx + dz * dz);
     if (distance < 1.0) {
+      if ((camera.position.y > eyeLevel && dy > 1.0) || (camera.position.y < eyeLevel && dy > 0.5)) {
+        // Player is ducking under an obstacle, so they are safe
+        continue;
+      }
       isGameOver = true;
       gameOverOverlay.style.display = "block";
       break;
@@ -280,7 +297,7 @@ function resetGame() {
   isGameOver = false;
   gameOverOverlay.style.display = "none";
   targetLane = 1;
-  camera.position.set(lanePositions[targetLane], groundLevel, 0);
+  camera.position.set(lanePositions[targetLane], eyeLevel, 0);
   camera.lookAt(
     new THREE.Vector3(
       camera.position.x,
@@ -307,9 +324,12 @@ window.addEventListener("keydown", (event) => {
       targetLane < lanePositions.length - 1
     ) {
       targetLane++;
-    } else if (event.key === " " && !isJumping) {
+    } else if ((event.key === " " || event.key === "ArrowUp") && !isJumping) {
       isJumping = true;
       jumpVelocity = 0.15;
+    } else if (event.key === "ArrowDown" && !isSliding) {
+      isSliding = true;
+      slideVelocity = -0.15;
     }
   }
   if (event.key.toLowerCase() === "r" && isGameOver) {
@@ -344,10 +364,21 @@ function animate() {
     if (isJumping) {
       camera.position.y += jumpVelocity;
       jumpVelocity -= gravity;
-      if (camera.position.y <= groundLevel) {
-        camera.position.y = groundLevel;
+      if (camera.position.y <= eyeLevel) {
+        camera.position.y = eyeLevel;
         isJumping = false;
         jumpVelocity = 0;
+      }
+    }
+
+    // Handle sliding.
+    if (isSliding) {
+      camera.position.y += slideVelocity;
+      slideVelocity += gravity;
+      if (camera.position.y >= eyeLevel) {
+        camera.position.y = eyeLevel;
+        isSliding = false;
+        slideVelocity = 0;
       }
     }
 
