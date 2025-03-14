@@ -45,6 +45,14 @@ let mouseY = 0;
 const flashlightDirection = new THREE.Vector3(0, 0, -1);
 const flashlightMaxAngle = Math.PI / 4; // Maximum angle the flashlight can turn
 
+// Shooting variables
+let bullets = [];
+const bulletSpeed = 2.0;
+const bulletLifespan = 6;
+let canShoot = true;
+let shootCooldown = 0.3; // seconds
+let lastShootTime = 0;
+
 //
 // --- Camera ---
 const camera = new THREE.PerspectiveCamera(
@@ -104,7 +112,7 @@ instructionOverlay.style.fontSize = "18px";
 instructionOverlay.style.color = "white";
 instructionOverlay.style.fontFamily = "Arial, sans-serif";
 instructionOverlay.style.pointerEvents = "none";
-instructionOverlay.innerHTML = "Move mouse to control flashlight<br>Arrow keys or WASD to move, Space to jump, Down or S to slide";
+instructionOverlay.innerHTML = "Move mouse to control flashlight<br>Arrow keys or WASD to move, Space to jump, Down or S to slide<br>";
 document.body.appendChild(instructionOverlay);
 
 //
@@ -236,12 +244,18 @@ lanePositions.forEach((xPos) => {
 //
 // --- Obstacles ---
 let obstacles = [];
-const obstacleMaterial = createObstacleMaterial(0xff0000);
+const redObstacleMaterial = createObstacleMaterial(0xff0000);
+const grayObstacleMaterial = createObstacleMaterial(0x808080);
 const initialObstacleCount = 10;
 
 function createObstacle() {
   const obstacleGeometry = new THREE.BoxGeometry(1, 1, 1);
-  const obstacle = new THREE.Mesh(obstacleGeometry, obstacleMaterial);
+
+  // Randomly decide if the obstacle is breakable (red) or unbreakable (gray)
+  const isBreakable = Math.random() < 0.6; // 60% chance of being breakable
+  const material = isBreakable ? redObstacleMaterial : grayObstacleMaterial;
+
+  const obstacle = new THREE.Mesh(obstacleGeometry, material);
   const randomLaneIndex = Math.floor(Math.random() * lanePositions.length);
   obstacle.position.x = lanePositions[randomLaneIndex];
   obstacle.position.z = -Math.random() * 200 - 100;
@@ -254,6 +268,9 @@ function createObstacle() {
   } else {
     obstacle.position.y = 2;  // Higher up for ducking under
   }
+
+  // Mark the obstacle as breakable or not
+  obstacle.userData.isBreakable = isBreakable;
 
   scene.add(obstacle);
   return obstacle;
@@ -269,6 +286,73 @@ function initObstacles() {
 initObstacles();
 
 //
+// --- Bullet Functions ---
+function createBullet() {
+  const bulletGeometry = new THREE.SphereGeometry(0.2, 8, 8);
+  const bulletMaterial = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+  const bullet = new THREE.Mesh(bulletGeometry, bulletMaterial);
+
+  // Set the bullet's position to be slightly in front of the camera
+  bullet.position.copy(camera.position);
+
+  // Set the bullet's direction based on the flashlight direction
+  bullet.userData.direction = flashlightDirection.clone();
+  bullet.userData.creationTime = gameTime;
+
+  scene.add(bullet);
+  bullets.push(bullet);
+
+  return bullet;
+}
+
+function updateBullets(delta) {
+  const bulletsToRemove = [];
+
+  bullets.forEach(bullet => {
+    // Move the bullet in its direction
+    bullet.position.addScaledVector(bullet.userData.direction, bulletSpeed);
+
+    // Check if the bullet has exceeded its lifespan
+    if (gameTime - bullet.userData.creationTime > bulletLifespan) {
+      bulletsToRemove.push(bullet);
+      return;
+    }
+
+    // Check for collisions with obstacles
+    for (let i = 0; i < obstacles.length; i++) {
+      const obstacle = obstacles[i];
+      const dx = bullet.position.x - obstacle.position.x;
+      const dy = bullet.position.y - obstacle.position.y;
+      const dz = bullet.position.z - obstacle.position.z;
+      const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+      if (distance < 1.0) {
+        // Bullet hit an obstacle
+        if (obstacle.userData.isBreakable) {
+          // Remove the obstacle
+          scene.remove(obstacle);
+          obstacles.splice(i, 1);
+          obstacles.push(createObstacle()); // Replace with a new one
+        }
+
+        // Remove the bullet
+        bulletsToRemove.push(bullet);
+        break;
+      }
+    }
+  });
+
+  // Remove bullets that hit obstacles or exceeded lifespan
+  bulletsToRemove.forEach(bullet => {
+    const index = bullets.indexOf(bullet);
+    if (index !== -1) {
+      bullets.splice(index, 1);
+      scene.remove(bullet);
+    }
+  });
+}
+
+//
 // --- Update Flashlight & Fog Uniforms ---
 // Updates the uniforms so that the flashlight (and fog) effect follows the camera.
 function updateFlashlightUniforms() {
@@ -282,8 +366,11 @@ function updateFlashlightUniforms() {
   floorMaterial.uniforms.uFlashlightDirection.value.copy(flashlightDir);
 
   // Update obstacle material uniforms.
-  obstacleMaterial.uniforms.uFlashlightPosition.value.copy(flashlightPos);
-  obstacleMaterial.uniforms.uFlashlightDirection.value.copy(flashlightDir);
+  redObstacleMaterial.uniforms.uFlashlightPosition.value.copy(flashlightPos);
+  redObstacleMaterial.uniforms.uFlashlightDirection.value.copy(flashlightDir);
+
+  grayObstacleMaterial.uniforms.uFlashlightPosition.value.copy(flashlightPos);
+  grayObstacleMaterial.uniforms.uFlashlightDirection.value.copy(flashlightDir);
 }
 
 //
@@ -331,7 +418,15 @@ function resetGame() {
   gameTime = 0;
   obstacleSpawnTimer = 0;
   distanceTraveled = 0;
+  lastShootTime = 0; // Reset shoot cooldown timer
+  canShoot = true;   // Ensure shooting is enabled
+
   scoreCounter.innerHTML = "Distance: 0 m";
+
+  // Clear all bullets
+  bullets.forEach(bullet => scene.remove(bullet));
+  bullets = [];
+
   initObstacles();
 }
 
@@ -355,6 +450,14 @@ function onMouseMove(event) {
 }
 
 window.addEventListener("mousemove", onMouseMove);
+
+// Add click event to shoot
+window.addEventListener("click", () => {
+  if (!isGameOver && canShoot && gameTime - lastShootTime > shootCooldown) {
+    createBullet();
+    lastShootTime = gameTime;
+  }
+});
 
 //
 // --- Player Controls ---
@@ -380,6 +483,13 @@ window.addEventListener("keydown", (event) => {
     else if ((event.key === "ArrowDown" || event.key.toLowerCase() === "s") && !isSliding && !isJumping) {
       isSliding = true;
       slideVelocity = -0.15;
+    }
+    // Shoot with F or E key
+    else if (event.key.toLowerCase() === "f" || event.key.toLowerCase() === "e") {
+      if (canShoot && gameTime - lastShootTime > shootCooldown) {
+        createBullet();
+        lastShootTime = gameTime;
+      }
     }
   }
   if (event.key.toLowerCase() === "r" && isGameOver) {
@@ -424,7 +534,7 @@ function animate() {
     // Handle sliding.
     if (isSliding) {
       camera.position.y += slideVelocity;
-      slideVelocity += gravity;
+      slideVelocity += standupSpeed;
       if (camera.position.y >= eyeLevel) {
         camera.position.y = eyeLevel;
         isSliding = false;
@@ -451,8 +561,16 @@ function animate() {
         );
         obstacle.position.x = lanePositions[randomLaneIndex];
         obstacle.position.z = -Math.random() * 200 - 200;
+
+        // Determine if the new obstacle should be breakable
+        const isBreakable = Math.random() < 0.6;
+        obstacle.userData.isBreakable = isBreakable;
+        obstacle.material = isBreakable ? redObstacleMaterial : grayObstacleMaterial;
       }
     });
+
+    // Update bullets
+    updateBullets(delta);
 
     // Update distance traveled.
     distanceTraveled += speed * delta;
