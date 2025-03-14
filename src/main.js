@@ -39,6 +39,12 @@ let distanceTraveled = 0; // score in meters
 
 const clock = new THREE.Clock();
 
+// Mouse control variables
+let mouseX = 0;
+let mouseY = 0;
+const flashlightDirection = new THREE.Vector3(0, 0, -1);
+const flashlightMaxAngle = Math.PI / 4; // Maximum angle the flashlight can turn
+
 //
 // --- Camera ---
 const camera = new THREE.PerspectiveCamera(
@@ -87,6 +93,19 @@ scoreCounter.style.color = "white";
 scoreCounter.style.fontFamily = "Arial, sans-serif";
 scoreCounter.innerHTML = "Distance: 0 m";
 document.body.appendChild(scoreCounter);
+
+//
+// --- Mouse Instruction Overlay ---
+const instructionOverlay = document.createElement("div");
+instructionOverlay.style.position = "absolute";
+instructionOverlay.style.bottom = "10px";
+instructionOverlay.style.left = "10px";
+instructionOverlay.style.fontSize = "18px";
+instructionOverlay.style.color = "white";
+instructionOverlay.style.fontFamily = "Arial, sans-serif";
+instructionOverlay.style.pointerEvents = "none";
+instructionOverlay.innerHTML = "Move mouse to control flashlight<br>Arrow keys to move, Space to jump, Down to slide";
+document.body.appendChild(instructionOverlay);
 
 //
 // --- Lighting & Ambient ---
@@ -196,7 +215,7 @@ function createFloorMaterial() {
 
 //
 // --- Floor (Lane) Geometry ---
-// The floor now uses our custom shader so it’s affected by the flashlight.
+// The floor now uses our custom shader so it's affected by the flashlight.
 const laneSegments = [];
 const floorMaterial = createFloorMaterial();
 
@@ -228,7 +247,7 @@ function createObstacle() {
   obstacle.position.z = -Math.random() * 200 - 100;
 
   // Randomly decide the type of obstacle: ground or overhead
-  const obstacleType = Math.random() < 0.5 ? "ground" : "overhead"; 
+  const obstacleType = Math.random() < 0.5 ? "ground" : "overhead";
 
   if (obstacleType === "ground") {
     obstacle.position.y = 0.5;  // On the ground
@@ -254,11 +273,14 @@ initObstacles();
 // Updates the uniforms so that the flashlight (and fog) effect follows the camera.
 function updateFlashlightUniforms() {
   const flashlightPos = camera.position.clone();
-  const flashlightDir = new THREE.Vector3();
-  camera.getWorldDirection(flashlightDir);
+
+  // Copy the base flashlight direction
+  const flashlightDir = flashlightDirection.clone();
+
   // Update floor material uniforms.
   floorMaterial.uniforms.uFlashlightPosition.value.copy(flashlightPos);
   floorMaterial.uniforms.uFlashlightDirection.value.copy(flashlightDir);
+
   // Update obstacle material uniforms.
   obstacleMaterial.uniforms.uFlashlightPosition.value.copy(flashlightPos);
   obstacleMaterial.uniforms.uFlashlightDirection.value.copy(flashlightDir);
@@ -312,6 +334,27 @@ function resetGame() {
   scoreCounter.innerHTML = "Distance: 0 m";
   initObstacles();
 }
+
+//
+// --- Mouse Control ---
+function onMouseMove(event) {
+  // Calculate normalized mouse position (-1 to 1)
+  mouseX = (event.clientX / window.innerWidth) * 2 - 1;
+  mouseY = -((event.clientY / window.innerHeight) * 2 - 1);
+
+  // Limit the maximum angle of the flashlight
+  const angleX = mouseX * flashlightMaxAngle;
+  const angleY = mouseY * flashlightMaxAngle;
+
+  // Update flashlight direction
+  flashlightDirection.set(
+    Math.sin(angleX),
+    Math.sin(angleY),
+    -Math.cos(angleX) * Math.cos(angleY)
+  );
+}
+
+window.addEventListener("mousemove", onMouseMove);
 
 //
 // --- Player Controls ---
@@ -422,13 +465,17 @@ function animate() {
 
   // Update flashlight (and fog) uniforms.
   updateFlashlightUniforms();
-  camera.lookAt(
-    new THREE.Vector3(
-      camera.position.x,
-      camera.position.y,
-      camera.position.z - 1,
-    ),
-  );
+
+  // Calculate camera look direction - forward plus a bit of the flashlight direction
+  const lookDir = new THREE.Vector3(
+    flashlightDirection.x * 0.5,
+    flashlightDirection.y * 0.5,
+    -1
+  ).normalize();
+
+  const lookTarget = new THREE.Vector3().copy(camera.position).add(lookDir);
+  camera.lookAt(lookTarget);
+
   renderer.render(scene, camera);
 
   // Revert camera to base position.
