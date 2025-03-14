@@ -120,7 +120,7 @@ void main() {
   vec3 toFragment = normalize(vWorldPosition - uFlashlightPosition);
   float cutoff = cos(uFlashlightAngle);
   float theta = dot(toFragment, normalize(uFlashlightDirection));
-  float intensity = smoothstep(cutoff - 0.02, cutoff + 0.02, theta);
+  float intensity = smoothstep(cutoff - 0.002, cutoff + 0.002, theta);
   vec3 litColor = uBaseColor * (uAmbient + (1.0 - uAmbient) * intensity);
 
   // Fog computation (exponential fog)
@@ -324,10 +324,10 @@ window.addEventListener("keydown", (event) => {
       targetLane < lanePositions.length - 1
     ) {
       targetLane++;
-    } else if ((event.key === " " || event.key === "ArrowUp") && !isJumping) {
+    } else if ((event.key === " " || event.key === "ArrowUp") && !isJumping && !isSliding) {
       isJumping = true;
       jumpVelocity = 0.15;
-    } else if (event.key === "ArrowDown" && !isSliding) {
+    } else if (event.key === "ArrowDown" && !isSliding && !isJumping) {
       isSliding = true;
       slideVelocity = -0.15;
     }
