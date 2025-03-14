@@ -104,7 +104,7 @@ instructionOverlay.style.fontSize = "18px";
 instructionOverlay.style.color = "white";
 instructionOverlay.style.fontFamily = "Arial, sans-serif";
 instructionOverlay.style.pointerEvents = "none";
-instructionOverlay.innerHTML = "Move mouse to control flashlight<br>Arrow keys to move, Space to jump, Down to slide";
+instructionOverlay.innerHTML = "Move mouse to control flashlight<br>Arrow keys or WASD to move, Space to jump, Down or S to slide";
 document.body.appendChild(instructionOverlay);
 
 //
@@ -360,17 +360,24 @@ window.addEventListener("mousemove", onMouseMove);
 // --- Player Controls ---
 window.addEventListener("keydown", (event) => {
   if (!isGameOver) {
-    if (event.key === "ArrowLeft" && targetLane > 0) {
+    // Left movement
+    if ((event.key === "ArrowLeft" || event.key.toLowerCase() === "a") && targetLane > 0) {
       targetLane--;
-    } else if (
-      event.key === "ArrowRight" &&
+    }
+    // Right movement
+    else if (
+      (event.key === "ArrowRight" || event.key.toLowerCase() === "d") &&
       targetLane < lanePositions.length - 1
     ) {
       targetLane++;
-    } else if ((event.key === " " || event.key === "ArrowUp") && !isJumping && !isSliding) {
+    }
+    // Jump
+    else if ((event.key === " " || event.key === "ArrowUp" || event.key.toLowerCase() === "w") && !isJumping && !isSliding) {
       isJumping = true;
       jumpVelocity = 0.15;
-    } else if (event.key === "ArrowDown" && !isSliding && !isJumping) {
+    }
+    // Slide
+    else if ((event.key === "ArrowDown" || event.key.toLowerCase() === "s") && !isSliding && !isJumping) {
       isSliding = true;
       slideVelocity = -0.15;
     }
